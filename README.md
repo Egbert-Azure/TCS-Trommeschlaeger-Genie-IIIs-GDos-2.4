@@ -16,11 +16,13 @@ Investigation order:
 
 ## Contents
 
-- `DMK/g3sgdos1_extract/`, `DMK/g3sgdos2_extract/` — file-level extracts of two damaged copies of the same **accumulated, in-use GDOS 2.4 system disk** (143 files: BASIC compilers, editors, monitors — a real end-user's disk, no installer/HD-format tooling). No raw `.dmk` for these two in the repo, extracts only.
-- `DMK/g3s_gdos24.dmk` + `g3s_gdos24_extract/` — a **multi-model master/installer disk**: carries `GDOSIII.IDL/.JOB`, `GDOSIIS.IDL/.JOB`, and `GDOSIIIS.IDL/.JOB` side by side, i.e. the job scripts + file manifests used to build model-specific system disks (Genie III / IIs / IIIs) from one shared codebase.
-- `DMK/G3S-GDOS24.DMK` + `g3s-gdos24_extract/` — a clean **stock "GDOSIIIS" build** (96 files), matching the `GDOSIIIS.IDL` manifest from the master disk exactly: printer drivers (ITOH, STAR, SIEMENS), `OVL2–OVL5.SYS`, `SYS0–SYS29.SYS`, and **`HDFORMAT.CMD` + `GENDIR.CMD`**.
-- `DMK/G3S-GDOS24-Transfer.DMK` + `g3s-gdos24-transfer_extract/` — the same GDOSIIIS system files (85, after removing a handful of unrelated CP/M dev-source files that were also on this physical disk — see note below).
-- `DMK/g3gd24-1.dmk` + `g3gd24-1_extract/` — a smaller (54-file) **GDOSIII-variant** build (extensionless system files: `ACCESS`, `INIT`, `INFOFILE`, `FORMFILE`, `JOB.CMD`), built from the `GDOSIII.JOB` script. No `HDFORMAT.CMD` (HD tooling is IIIs-specific — see below).
+Disks are shipped as raw `.dmk`/`.DMK` images; extract any of them with `trsextract` (see "Working with disk/ROM images" below).
+
+- `DMK/g3s_gdos24.dmk` — a **multi-model master/installer disk**: carries `GDOSIII.IDL/.JOB`, `GDOSIIS.IDL/.JOB`, and `GDOSIIIS.IDL/.JOB` side by side, i.e. the job scripts + file manifests used to build model-specific system disks (Genie III / IIs / IIIs) from one shared codebase.
+- `DMK/G3S-GDOS24.DMK` — a clean **stock "GDOSIIIS" build** (96 files), matching the `GDOSIIIS.IDL` manifest from the master disk exactly: printer drivers (ITOH, STAR, SIEMENS), `OVL2–OVL5.SYS`, `SYS0–SYS29.SYS`, and **`HDFORMAT.CMD` + `GENDIR.CMD`**.
+- `DMK/G3S-GDOS24-Transfer.DMK` — the same GDOSIIIS system files, on a physical disk that also happened to carry some unrelated CP/M dev-source files (`FORMAT.C`, `BIOS.H`, `STDIO.H`, assorted `.MAC`/`.SUB`, `NEWLIBC.REL`).
+- `DMK/g3gd24-1.dmk` — a smaller (54-file) **GDOSIII-variant** build (extensionless system files: `ACCESS`, `INIT`, `INFOFILE`, `FORMFILE`, `JOB.CMD`), built from the `GDOSIII.JOB` script. No `HDFORMAT.CMD` (HD tooling is IIIs-specific — see below).
+- `DMK/g3gd21-1.dmk`, `DMK/g3gd21-chr.dmk`, `DMK/g3nd-g01.dmk`, `DMK/GDOS.DSK` — additional Genie IIIs GDOS-family disks.
 - `ROM/g3s_8501004_bootrom_2732.bin` — the standard Genie IIIs boot EPROM (4KB, 2732), by **Uwe Böker, TCS, 1984**.
 - `ROM/g3s_hd-omti_bootrom_2764.bin` — **the hard-disk boot EPROM (8KB, 2764), modified by Arnulf Sopp in 1986** for an OMTI hard-disk controller. See "The Sopp EPROM" below — this is the key artifact for the Calva-DOS/HD-boot investigation.
 - `src/g3s_hd-omti_bootrom_2764.raw_disasm.txt` — full linear Z80 disassembly of the Sopp EPROM (all 8192 bytes, blind/unannotated — includes data misdecoded as code outside the traced flow).
@@ -32,12 +34,12 @@ Investigation order:
 - `boot_gdos24_omti.command`, `boot_gdos24_omti_stdrom.command`, `boot_gdos24_hard0.command` — one-click launchers (repo root) for `sdltrsOMTI`'s `sdl2trs`, pre-wired to this repo's own ROM/DMK/HDV files with every drive slot explicit. `_stdrom` uses the plain ROM instead of the Sopp EPROM; `_hard0` attaches the disk via the WD1000/1010 ("Xebec-style") controller instead of OMTI. See "Emulation" for why each exists.
 - `README.md`, `LICENSE` (GPLv3).
 
-All new disks/ROMs were sourced from the sibling `GenieIIIs` repo (see "External resources"); only GDOS/TRS-DOS-relevant and boot-ROM material was brought over — CP/M-only disks and source trees in that repo (Holte's CP/M 3 BIOS, its Z-System boot disk, etc.) were deliberately left out of this repo, and a handful of CP/M dev-source files (`FORMAT.C`, `BIOS.H`, `STDIO.H`, assorted `.MAC`/`.SUB`, `NEWLIBC.REL`) that happened to be co-resident on the Transfer disk were removed from that disk's extract for the same reason.
+All new disks/ROMs were sourced from the sibling `GenieIIIs` repo (see "External resources"); only GDOS/TRS-DOS-relevant and boot-ROM material was brought over — CP/M-only disks and source trees in that repo (Holte's CP/M 3 BIOS, its Z-System boot disk, etc.) were deliberately left out of this repo.
 
 ## Working with disk/ROM images
 
 - Treat `.dmk` and `.bin` files as opaque binary artifacts. Extract `.dmk` disks with `python3 ~/Documents/GitHub/trsextract/trsextract.py <image.dmk> -o <dest_dir> -v` (a custom TRS-80 NEWDOS/80 & G-DOS extractor). Falls back to `strings -n 4` / `xxd` / `cmp -l` for quick triage on both disks and ROMs.
-- If new disk images are added, keep them under `DMK/`, and if extracted, use a `<name>_extract/` sibling directory. ROM/EPROM dumps go under `ROM/`.
+- If new disk images are added, keep them under `DMK/`. ROM/EPROM dumps go under `ROM/`.
 
 ## Emulation
 
@@ -69,9 +71,9 @@ Boots straight to a working **GDOS 2.4 prompt** with the standard boot banner; `
 
 - `SYS0.SYS` carries `VERSION 2.4  (C) 1984 TCS/MVC`. GDOS 2.4 is a 1984 product of **TCS/MVC** (TCS = Trommeschläger Computersysteme / TCS Computer GmbH, Sankt Augustin; "MVC" credit unexpanded).
 - GDOS 2.4 was built from **one shared codebase producing three model-specific system disks** — Genie III, Genie IIs, and Genie IIIs — via an installer job script (`GDOSIII.JOB` / `GDOSIIS.JOB` / `GDOSIIIS.JOB`, each: `COPY 0 1,,EDK FMT KDWA IDL=<model>/IDL` then `PROT 1 NAME=<model>F`). The `<model>.IDL` file is the resulting manifest (name/date + file list) copied onto the new disk; `GDOS.ILF`/`INHALT.SYS`/`DIR.SYS` play the same directory-manifest role on the already-built disks.
-- Install-manifest dates found: `17.04.85` (master disk, all three `.IDL` files) and `15.09.85` (the older `g3sgdos1/2` extracts' `GDOS.ILF`) — so the disks in this repo span roughly Sept 1984 (code copyright) through at least Sept 1985 (an install/rebuild instance).
+- Install-manifest dates found: `17.04.85` (master disk, all three `.IDL` files) and `15.09.85` (an older accumulated GDOS 2.4 system disk, investigated separately) — so the material spans roughly Sept 1984 (code copyright) through at least Sept 1985 (an install/rebuild instance).
 - Architecture: `GDOS.SYS` (~1280 bytes) is a small boot stub; `SYS0.SYS` (19200 bytes) is the large resident DOS core; `SYS1–SYS29.SYS` (~1.2–1.3KB each) are individually-loaded overlay modules (error text, printer routing, formatting, etc., mostly in German). The Genie-IIIs build additionally uses `OVL2–OVL5.SYS`.
-- **The DOS core is not a single fixed binary.** `SYS0.SYS` differs by 1719 of 19200 bytes between the "accumulated" disk (`g3sgdos1_extract`) and the "stock GDOSIIIS" disk (`g3s-gdos24_extract`), spread across the whole file — both self-identify as "VERSION 2.4" but are different internal builds/patch levels.
+- **The DOS core is not a single fixed binary.** `SYS0.SYS` differs by 1719 of 19200 bytes between an older accumulated GDOS 2.4 system disk (investigated separately) and the stock GDOSIIIS build (`G3S-GDOS24.DMK`), spread across the whole file — both self-identify as "VERSION 2.4" but are different internal builds/patch levels.
 
 ### Hard-disk support in GDOS 2.4 — Genie-IIIs-specific
 
@@ -140,7 +142,7 @@ Not yet resolved: what `IX=FC00h` (`E=2`) is; which physical key produces the ho
 ### External resources
 
 - **`~/Documents/GitHub/GenieIIIs`** (local clone of `github.com/Egbert-Azure/GenieIIIs`) is the master archive this repo's GDOS 2.4 disks and both boot ROMs were pulled from. It holds substantially more material not brought into this repo (by design — this repo stays GDOS/TRS-DOS-scoped): a separate CP/M 3 + Z-System boot disk and BIOS source tree, hard-disk volume images (`HDV/*.hdv`), and other unrelated NEWDOS/MS-DOS disks. Revisit it if the Sopp-EPROM disassembly needs cross-referencing against real hardware I/O addresses.
-- **`python3 ~/Documents/GitHub/trsextract/trsextract.py`** — the extraction tool used for all `_extract/` directories in this repo.
+- **`python3 ~/Documents/GitHub/trsextract/trsextract.py`** — the extraction tool for the `.dmk` disks in this repo.
 - **`~/Documents/GitHub/sdltrsXebec`** — writable fork of `sdltrsOMTI`, created to add real Xebec S1410 SASI emulation (the controller GDOS 2.4/CP/M on the Genie IIIs actually use — see "The Sopp EPROM" below and `src/omti_boot_crash_investigation.md`). Once that emulation works, come back here to resume end-to-end HD-boot testing (`HDFORMAT.CMD`, `GENDIR.CMD`, drives 5/6).
 
 ## Open questions
