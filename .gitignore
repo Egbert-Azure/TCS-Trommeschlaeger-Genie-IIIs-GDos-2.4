@@ -7,6 +7,9 @@ DMK/*.DMK
 !DMK/G3S-GDOS24.DMK
 !DMK/G3S-GDOS24-Transfer.DMK
 !DMK/g3gd24-1.dmk
+!DMK/g3gd21-1.dmk
+!DMK/g3gd21-chr.dmk
+!DMK/g3nd-g01.dmk
 
 # Hard-disk working images: large, regeneratable (src/build_blank_omti_hdv.py),
 # and mutated in place during interactive testing - not canonical source material.
