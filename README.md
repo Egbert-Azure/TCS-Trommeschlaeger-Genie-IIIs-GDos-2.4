@@ -16,22 +16,7 @@ Investigation order:
 
 ## Contents
 
-Disks are shipped as raw `.dmk`/`.DMK` images; extract any of them with `trsextract` (see "Working with disk/ROM images" below).
-
-- `DMK/g3s_gdos24.dmk` — a **multi-model master/installer disk**: carries `GDOSIII.IDL/.JOB`, `GDOSIIS.IDL/.JOB`, and `GDOSIIIS.IDL/.JOB` side by side, i.e. the job scripts + file manifests used to build model-specific system disks (Genie III / IIs / IIIs) from one shared codebase.
-- `DMK/G3S-GDOS24.DMK` — a clean **stock "GDOSIIIS" build** (96 files), matching the `GDOSIIIS.IDL` manifest from the master disk exactly: printer drivers (ITOH, STAR, SIEMENS), `OVL2–OVL5.SYS`, `SYS0–SYS29.SYS`, and **`HDFORMAT.CMD` + `GENDIR.CMD`**.
-- `DMK/G3S-GDOS24-Transfer.DMK` — the same GDOSIIIS system files, on a physical disk that also happened to carry some unrelated CP/M dev-source files (`FORMAT.C`, `BIOS.H`, `STDIO.H`, assorted `.MAC`/`.SUB`, `NEWLIBC.REL`).
-- `DMK/g3gd24-1.dmk` — a smaller (54-file) **GDOSIII-variant** build (extensionless system files: `ACCESS`, `INIT`, `INFOFILE`, `FORMFILE`, `JOB.CMD`), built from the `GDOSIII.JOB` script. No `HDFORMAT.CMD` (HD tooling is IIIs-specific — see below).
-- `DMK/g3gd21-1.dmk`, `DMK/g3gd21-chr.dmk`, `DMK/g3nd-g01.dmk`, `DMK/GDOS.DSK` — additional Genie IIIs GDOS-family disks.
-- `ROM/g3s_8501004_bootrom_2732.bin` — the standard Genie IIIs boot EPROM (4KB, 2732), by **Uwe Böker, TCS, 1984**.
-- `ROM/g3s_hd-omti_bootrom_2764.bin` — **the hard-disk boot EPROM (8KB, 2764), modified by Arnulf Sopp in 1986** for an OMTI hard-disk controller. See "The Sopp EPROM" below — this is the key artifact for the Calva-DOS/HD-boot investigation.
-- `src/g3s_hd-omti_bootrom_2764.raw_disasm.txt` — full linear Z80 disassembly of the Sopp EPROM (all 8192 bytes, blind/unannotated — includes data misdecoded as code outside the traced flow).
-- `src/g3s_hd-omti_bootrom_2764.annotated.md` — the actually-understood control flow of that ROM, with addresses, register meanings, and an explicit "not yet traced" list. Read this before re-deriving anything about the ROM from scratch.
-- `src/gdos_hd_tools.annotated.md` — disassembly notes on `HDFORMAT.CMD` and `GENDIR.CMD` (the two GDOS-side hard-disk tools): confirms `HDFORMAT.CMD` talks to the controller directly (no PDrive/GDOS-drive-table involvement, confirmation word is literally `JA`), while `GENDIR.CMD` requires a valid entry in GDOS's drive table (pointer at `4399h`) for whatever drive number you give it. Note: `PD`/PDRIVE itself is confirmed **floppy-only** (see "GDOS 2.4 origin" below) — whatever populates that drive-table entry for a hard disk is a still-unidentified, different command.
-- `src/build_blank_omti_hdv.py` — builds a blank single-partition OMTI `.hdv` for `sdltrs-MultiHDC`'s `-omti0`/`-omti1`. Defaults to 306 cyl/4 heads/17 sec/512B (~10.65MB, the classic "10MB" ST-506/MFM geometry — matches the real manual's documented 10MB built-in HD capacity); `--cyls`/`--heads`/`--secs` for other geometries. See "Emulation" below for the header-field gotcha it encodes.
-- `src/genie3s_init_loader.md` — real TCS documentation of the *standard* (non-Sopp) boot loader's own dispatch logic, found by the author. Directly explains several previously-unidentified pieces of the Sopp ROM disassembly (see cross-reference section in `g3s_hd-omti_bootrom_2764.annotated.md`) — read this before re-guessing at `E`/`IX` boot-device-selector values or hotkey semantics.
-- `src/omti_boot_crash_investigation.md` — full writeup of a reproducible `sdltrs-MultiHDC` crash blocking end-to-end HD-boot testing, what's been ruled out (with evidence), the hotkey mechanism and open leads, and the next-step plan. Read this before resuming step 6 of the investigation order above.
-- `boot_gdos24_omti.command`, `boot_gdos24_omti_stdrom.command`, `boot_gdos24_hard0.command` — one-click launchers (repo root) for `sdltrs-MultiHDC`'s `sdl2trs`, pre-wired to this repo's own ROM/DMK/HDV files with every drive slot explicit. `_stdrom` uses the plain ROM instead of the Sopp EPROM; `_hard0` attaches the disk via the WD1000/1010 ("Xebec-style") controller instead of OMTI. See "Emulation" for why each exists.
+- Disks are shipped as raw `.dmk`/`.DMK` images; extract any of them with `trsextract` (see "Working with disk/ROM images" below).
 - `README.md`, `LICENSE` (GPLv3).
 
 All new disks/ROMs were sourced from the sibling `GenieIIIs` repo (see "External resources"); only GDOS/TRS-DOS-relevant and boot-ROM material was brought over — CP/M-only disks and source trees in that repo (Holte's CP/M 3 BIOS, its Z-System boot disk, etc.) were deliberately left out of this repo.
