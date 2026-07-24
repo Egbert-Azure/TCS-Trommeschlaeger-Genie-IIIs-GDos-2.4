@@ -1,0 +1,25 @@
+# The Genie IIIs Init Loader (real TCS documentation, found by the user)
+
+This is real manual documentation of the **standard** boot loader's dispatch logic (i.e. the base architecture the plain `g3s_8501004_bootrom_2732.bin` implements, and which the Sopp OMTI ROM almost certainly extends rather than replaces). Paraphrased/cleaned up from an OCR'd/translated source page; decimal values in parens are the hex value's decimal equivalent as given in the source.
+
+## Boot sequence
+
+1. **Power-On vs. RESET test.** On Power-On: load the character set. **If `F8` is held at the same time, the character set is reloaded and the memory area `4000h-4FFFh` (16384-20479) is destroyed** — a video character-generator reload, unrelated to disk boot.
+2. **Check if `F1` is pressed. If yes → enter the Monitor.** *(Correction to this investigation's earlier assumption: `F1` is documented here as "enter Monitor", not "skip hard-disk boot / force floppy". If the Sopp ROM inherits this same check, pressing `F1` may not do what several test attempts this session assumed it would.)*
+3. **Read TRACK 0, SECTOR 0** (as with the `B` command). **The byte at relative offset `E0h` (224) of that sector decides how boot continues:**
+
+| Value at offset `E0h` | Meaning | Action |
+|---|---|---|
+| `01` | Default for Genie IIIs **G-DOS** floppy disks | System byte 0 = `00`, system byte 1 = `C4` (196). Track 0/Sector 0 loaded to **`4200h`** (16896) and execution jumps there. |
+| `02` | Default for Genie IIIs **CP/M** floppy disks | System byte 0 = `01`, system byte 1 = `C4` (196). Track 0/Sector 0 loaded to **`FC00h`** (64512) and execution jumps there. |
+| `03` | Default for Genie IIIs **service disks** | System byte 0 = `00`, system byte 1 = `04`. Track 0/Sector 0 loaded to `0000h` and execution jumps there. **Additionally**, memory location `2FFFh` (12287) is tested against value `B2h` (178). If it matches, system byte 0 is set to `00` and system byte 1 to `E4h` (228), and instead Track 0/Sector 0 is loaded to `4200h` and execution jumps there — this makes it possible to boot standard G-DOS or NEWDOS-80 diskettes from a SpeedMaster 5.3, Genie I/II, or plain TRS-80. If those disks are single-density, the "fire button" must be held, and the system can only read them at a 1.78MHz clock rate. |
+
+## Cross-reference against the Sopp OMTI ROM disassembly (`g3s_hd-omti_bootrom_2764.annotated.md`)
+
+This resolves two previously-open items in that file directly:
+
+- **`E=2 → IX=FC00h` is the CP/M boot entry point**, not an unidentified target as previously flagged. Matches "value `02` → jump to `FC00h`" exactly.
+- **`E=3 → IX=0000h` is the "service disk" case.** Matches "value `03` → jump to `0000h`" exactly.
+- **`E=1 → IX=4200h`** matches "value `01`" (G-DOS floppy) exactly — and this is almost certainly *why* the Sopp ROM's OMTI-success path also lands on `E=1`/`IX=4200h`: `4200h` is the fixed landing address for "real GDOS bootstrap code", regardless of whether that code came from a floppy's own track 0/sector 0 (the base loader's job) or from the OMTI hard disk's boot sector (the Sopp extension's job) — same destination, same handoff convention, different source.
+- **The `B2h` check is a disk-format-compatibility signature, not obviously a user keyboard hotkey** in the base loader's own design — it's a byte the loader expects to find already present at a fixed memory location (`2FFFh` in the base loader) to recognize "this is actually a compatible foreign-format standard disk" and re-route the `03h` (service disk) case to the `01h` (G-DOS) landing address. The Sopp ROM's own `CP B2h` check (at `0042h` in its disassembly) tests the *same* value, but against the latched byte at `0xFFFF`, not `0x2FFFh` — so either the Sopp ROM relocated/aliased this mechanism, or it's reusing the signature value for a related-but-distinct purpose specific to its OMTI extension. **Not fully reconciled yet** — worth re-examining the Sopp ROM's own handling of `2FFFh` specifically (searched for but not yet found in the traced portion) the next time this is picked up.
+- **Genuine keyboard hotkeys in the *base* loader are `F8` (charset reload) and `F1` (enter Monitor)** — neither is "force floppy instead of HD", because the base loader doesn't know hard disks exist at all. The Sopp ROM's own keyboard-matrix check (`38A0h`, bits 0-1 = `F1`/`F2` per `keystate[8]`, tested at `1100h`/`0070h`) is very likely a **new addition specific to the OMTI extension**, layered on top of (or interacting with) this base loader's own `F1`-checks-Monitor step. If the Sopp ROM's step-2-equivalent still checks `F1` for Monitor-entry *before* ever reaching the OMTI-detect code, then pressing `F1` during boot might enter the Monitor rather than skip to floppy — which would explain repeated difficulty getting a clean "skip HD" result via `F1` this session. **`F2` (the other bit tested in the same `AND 03h` check) has not been specifically tried alone yet** and is now the better candidate for "skip HD boot" if the two functions are in fact distinct.

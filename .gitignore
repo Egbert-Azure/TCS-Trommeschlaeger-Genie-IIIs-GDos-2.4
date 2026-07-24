@@ -1,0 +1,16 @@
+# Disk images: default-deny. Only the specific disks currently under active
+# analysis are tracked (whitelisted below) - don't let stray/incoming dumps
+# get committed by accident.
+DMK/*.dmk
+DMK/*.DMK
+!DMK/g3s_gdos24.dmk
+!DMK/G3S-GDOS24.DMK
+!DMK/G3S-GDOS24-Transfer.DMK
+!DMK/g3gd24-1.dmk
+
+# Hard-disk working images: large, regeneratable (src/build_blank_omti_hdv.py),
+# and mutated in place during interactive testing - not canonical source material.
+HDV/
+
+# Emulator session logs from boot_gdos24_omti.command - transient, regenerated each run.
+logs/
