@@ -1,4 +1,4 @@
-# The Genie IIIs Init Loader (real TCS documentation, found by the user)
+# The Genie IIIs Init Loader (real TCS documentation)
 
 This is real manual documentation of the **standard** boot loader's dispatch logic (i.e. the base architecture the plain `g3s_8501004_bootrom_2732.bin` implements, and which the Sopp OMTI ROM almost certainly extends rather than replaces). Paraphrased/cleaned up from an OCR'd/translated source page; decimal values in parens are the hex value's decimal equivalent as given in the source.
 
