@@ -2,6 +2,39 @@
 
 *Updated 2026-07-20, end of second session — **root cause found, investigation closed for now.** Read this whole file before touching code or disk images again.*
 
+**Correction, 2026-08-01, from the sibling project `CalvaDos`. Kept as a
+note here, not a rewrite — the investigation below stays as it was written.**
+Two claims in the root-cause section need qualifying, and one needs a
+caveat stated plainly rather than left implicit:
+
+- **"The controller is really Xebec, not OMTI" is correct for GDOS 2.4's own
+  resident driver, and reads too generally as written.** The Sopp EPROM's
+  *own boot-time* code — the detect-and-load logic this document is actually
+  about, running before GDOS is loaded at all — genuinely drives OMTI, not
+  Xebec: confirmed by this repo's own port table in
+  `g3s_hd-omti_bootrom_2764.annotated.md` ("ports `40h`-`43h` match
+  `sdltrs-MultiHDC`'s documented OMTI 5527 register range exactly") and now
+  by `CalvaDos`'s working OMTI driver and OMTI-driven boot,
+  `run-hdboottest.sh` reaching PASS. Both controllers are real; they belong
+  to different software.
+- **"GDOS 2.4 has no configurable hard-disk parameters at all... fixed
+  10MB, two-partition layout (matches drives 5/6)" undercounts the driver's
+  own addressing.** `CalvaDos`'s extraction of the *stock* Xebec driver
+  blob decodes a third hard-disk dispatch slot, drive `9`, in the parameter
+  table itself — see `CalvaDos/src/hd-driver/abi.md`. The "fixed 10MB,
+  two-partition" description most plausibly describes the specific shipped
+  product, not a limit in the driver code.
+- **One caveat this repo's own success does not settle, stated honestly:**
+  the `PC=002Bh` crash chased throughout this document happened in the
+  EPROM's *fallback-to-floppy* path — reached only because the attached
+  disk had no valid boot sector to jump to (see "The blocker," below).
+  `CalvaDos` has never tested that specific scenario; its own testing
+  always has a valid boot sector present at `4200h`, so its success
+  confirms the EPROM's *success* path works against OMTI, not that this
+  specific crash (in the *failure* path) was, or wasn't, a genuine bug —
+  independent of the Xebec-vs-OMTI question above, which concerns the
+  protocol, not this particular fallback-path crash.
+
 ## ROOT CAUSE (found by the user, closes out this investigation)
 
 **GDOS 2.4 and Klaus Kaempf's CP/M port for the TCS Genie IIIs both use the SASI protocol of the Xebec S1410 controller** (source: [Xebec S1410A Owner's Manual](https://dn720005.ca.archive.org/0/items/xebec-s-1410-a-owner-manual/Xebec%20S1410A%20Owner%20Manual_text.pdf)). Xebec S1410 SASI is **not compatible with WD1000/1010, and not compatible with OMTI 5527 either** — "somewhat more similar" to OMTI than to WD1000, but still a distinct protocol. `sdltrsOMTI` emulates exactly two controllers, OMTI 5527 and WD1000/1010 — **neither is the one this hardware/software combination actually needs.**
