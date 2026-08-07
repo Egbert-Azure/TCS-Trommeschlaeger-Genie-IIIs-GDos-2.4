@@ -17,13 +17,20 @@ caveat stated plainly rather than left implicit:
   by `CalvaDos`'s working OMTI driver and OMTI-driven boot,
   `run-hdboottest.sh` reaching PASS. Both controllers are real; they belong
   to different software.
-- **"GDOS 2.4 has no configurable hard-disk parameters at all... fixed
+- ~~**"GDOS 2.4 has no configurable hard-disk parameters at all... fixed
   10MB, two-partition layout (matches drives 5/6)" undercounts the driver's
   own addressing.** `CalvaDos`'s extraction of the *stock* Xebec driver
   blob decodes a third hard-disk dispatch slot, drive `9`, in the parameter
   table itself — see `CalvaDos/src/hd-driver/abi.md`. The "fixed 10MB,
   two-partition" description most plausibly describes the specific shipped
-  product, not a limit in the driver code.
+  product, not a limit in the driver code.~~
+  **Reverted, 2026-08-07:** this bullet is withdrawn. The stock Xebec
+  driver's dispatch table does decode three slots (function codes 5, 6 and
+  9), and that decode is correct — but three dispatch slots is not three
+  volumes in the shipped machine. The period G-DOS 2.4 manual documents one
+  built-in 10 MB disk as drives 5 and 6, and a structural inference about a
+  dispatch table cannot override that. "Fixed 10 MB, two-partition, drives
+  5/6" was right as written and did not undercount anything.
 - **One caveat this repo's own success does not settle, stated honestly:**
   the `PC=002Bh` crash chased throughout this document happened in the
   EPROM's *fallback-to-floppy* path — reached only because the attached
