@@ -1,6 +1,6 @@
 # Investigation: `sdltrsOMTI` crash during Sopp-EPROM HD-boot-fail fallback
 
-*Updated 2026-07-20, end of second session — **root cause found, investigation closed for now.** Read this whole file before touching code or disk images again.*
+*Updated 2026-07-20
 
 **Correction, 2026-08-01, from the sibling project `CalvaDos`. Kept as a
 note here, not a rewrite — the investigation below stays as it was written.**
