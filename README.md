@@ -1,44 +1,60 @@
 # TCS-Trommeschläger-Genie-IIIs-GDos-2.4
-TCS Trommeschläger Genie IIIs focus on the GDos 2.4 implementation
+
+TCS Trommeschläger Genie IIIs, focused on the G-DOS 2.4 implementation.
 
 ## Repository purpose
 
-This repository archives and reverse-engineers disk/ROM images for the **TCS Trommeschläger Genie IIIs**, a German-made clone of the Tandy/RadioShack TRS-80 Model III/4. The focus is **GDOS 2.4** (the Genie's native DOS) and, ultimately, understanding hard-disk boot support on this platform — specifically **Arnulf Sopp's 1986 boot-EPROM modification** that adds hard-disk (OMTI controller) boot capability. This repo is scoped to GDOS/TRS-DOS-family content; CP/M material lives in the general [TCS-Trommeschlaeger-Genie-IIIs](https://github.com/Egbert-Azure/TCS-Trommeschlaeger-Genie-IIIs) archive and is intentionally not duplicated here. There is no build system or test suite — it's a disk/ROM archive plus reverse-engineering notes.
+This repository archives and reverse-engineers disk and ROM images for the **TCS Trommeschläger Genie IIIs**, a German-made machine in the Tandy TRS-80 Model III/4 family. The focus is **G-DOS 2.4**, the Genie's native DOS, and hard-disk boot support on this platform — specifically **Arnulf Sopp's 1986 boot-EPROM modification** that adds hard-disk boot via an OMTI controller.
 
-Investigation order:
+Scope is G-DOS/TRS-DOS-family material. CP/M content lives in the general [TCS-Trommeschlaeger-Genie-IIIs](https://github.com/Egbert-Azure/TCS-Trommeschlaeger-Genie-IIIs) archive and is deliberately not duplicated here. There is no build system and no test suite — this is a disk/ROM archive plus reverse-engineering notes.
 
-1. Establish GDOS 2.4's origin and structure — **done**, see below.
-2. Determine whether/how GDOS 2.4 supports hard disks — **done**: the Genie-IIIs-specific build ships `HDFORMAT.CMD`/`GENDIR.CMD`. See below.
-3. Find "the new EPROM" for HD boot — **done**: `ROM/g3s_hd-omti_bootrom_2764.bin` self-identifies as modified by Arnulf Sopp in 1986 for an OMTI hard-disk controller. See below.
-4. Confirm a plain floppy boot works as a baseline before touching the Sopp EPROM — **done**, see "Emulation" below.
-5. Characterize what the Sopp EPROM's HD-boot code actually does — **in progress, strong first result**: the boot-time control flow (hotkey check, OMTI presence probe, device dispatch, hand-off to a hard-disk boot sector at `4200h`) has been traced and annotated. See `src/g3s_hd-omti_bootrom_2764.annotated.md` and "The Sopp EPROM" below.
-6. Confirm GDOS 2.4 reaches its hard disk end-to-end — **done for drives 5/6** ~~(a third slot, drive 9, also exists in the driver code — see the correction below)~~ *(drive-9 note reverted 2026-08-07 — see the correction under "Hard-disk support")*. GDOS 2.4 and the CP/M port drive the **Xebec S1410** SASI controller, a third protocol distinct from both OMTI 5527 and WD1000/1010. This explains the OMTI crash chased at length (see `src/omti_boot_crash_investigation.md` — now qualified, see the correction there), why WD1000 attachment never worked, and why no GDOS "connect the hard disk" command was ever found (GDOS 2.4 has no user-facing configuration command for HD parameters — see the correction below on what actually populates the drive-table entry). [`sdltrs-MultiHDC`](https://github.com/Egbert-Azure/sdltrs-MultiHDC) now emulates the Xebec S1410, and GDOS 2.4's drives 5/6 work end-to-end (`HDFORMAT`, `GENDIR`, files persist across reboots). ~~Still open: the Sopp EPROM's own boot-from-hard-disk path.~~ **Resolved, 2026-08-01 — see "Open questions."**
+## Investigation status
+
+| # | Question | Status |
+|---|---|---|
+| 1 | G-DOS 2.4's origin and structure | Settled |
+| 2 | Whether/how G-DOS 2.4 supports hard disks | Settled — the Genie IIIs build ships `HDFORMAT.CMD` and `GENDIR.CMD` |
+| 3 | Locate the HD-boot EPROM | Settled — `ROM/g3s_hd-omti_bootrom_2764.bin` self-identifies as modified by Arnulf Sopp in 1986 |
+| 4 | Floppy-boot baseline before touching the Sopp EPROM | Settled — see "Emulation" |
+| 5 | What the Sopp EPROM's HD-boot code does | Traced and annotated; see `src/g3s_hd-omti_bootrom_2764.annotated.md` |
+| 6 | Whether stock G-DOS 2.4 reaches its hard disk end-to-end | Settled for drives 5 and 6, via Xebec S1410 emulation |
+| 7 | Whether the Sopp EPROM's own boot path completes | **Open** — see below |
+
+Question 7 is the live one. It is being worked in the sibling project [CalvaDOS](https://github.com/Egbert-Azure/CalvaDOS), which reconstructs the boot support Sopp wrote, since the original artifact has never been recovered.
 
 ## Contents
 
-- Disks are shipped as raw `.dmk`/`.DMK` images; extract any of them with `trsextract` (see "Working with disk/ROM images" below).
+- Disks ship as raw `.dmk`/`.DMK` images. Extract with [trsextract](https://github.com/Egbert-Azure/trsextract): `python3 trsextract.py <image.dmk> -o <dest_dir> -v`.
 - `README.md`, `LICENSE` (GPLv3).
 
-All new disks/ROMs were sourced from the sibling `GenieIIIs` repo (see "External resources"); only GDOS/TRS-DOS-relevant and boot-ROM material was brought over — CP/M-only disks and source trees in that repo (Holte's CP/M 3 BIOS, its Z-System boot disk, etc.) were deliberately left out of this repo.
+New disks go under `DMK/`; ROM and EPROM dumps under `ROM/`. All images were sourced from the sibling `GenieIIIs` repo (see "External resources"); only G-DOS/TRS-DOS-relevant and boot-ROM material was brought across.
 
 ## Working with disk/ROM images
 
-- Treat `.dmk` and `.bin` files as opaque binary artifacts. Extract `.dmk` disks with the [trsextract](https://github.com/Egbert-Azure/trsextract) tool (`python3 trsextract.py <image.dmk> -o <dest_dir> -v`, a custom TRS-80 NEWDOS/80 & G-DOS extractor). Falls back to `strings -n 4` / `xxd` / `cmp -l` for quick triage on both disks and ROMs.
-- If new disk images are added, keep them under `DMK/`. ROM/EPROM dumps go under `ROM/`.
+Treat `.dmk` and `.bin` files as opaque binaries. `trsextract` handles the disks; `strings -n 4`, `xxd` and `cmp -l` are adequate for quick triage on both disks and ROMs.
 
 ## Emulation
 
-Actual booting/testing is done with the [**sdltrs-MultiHDC**](https://github.com/Egbert-Azure/sdltrs-MultiHDC) emulator (`build/sdl2trs`), a fork of SDL2TRS/xtrs that emulates three Genie IIIs hard-disk controllers — OMTI 5527, WD1000/1010, and the Xebec S1410 SASI. Pass this repo's own `DMK`/`ROM` files as arguments.
+Booting and testing is done with [**sdltrs-MultiHDC**](https://github.com/Egbert-Azure/sdltrs-MultiHDC) (`build/sdl2trs`), a fork of SDL2TRS/xtrs that emulates three Genie IIIs hard-disk controllers: OMTI 5527, WD1000/1010, and Xebec S1410 SASI.
 
-**GDOS 2.4's hard-disk path now works.** GDOS 2.4 (and Klaus Kämpf's CP/M port) drive the **Xebec S1410** SASI controller — a third protocol distinct from OMTI 5527 and WD1000/1010, which is why earlier OMTI-only testing failed **for this specific piece of software**. `sdltrs-MultiHDC` now emulates the Xebec S1410, including the TCS Genie IIIs onboard SASI adapter (ports `0x00`–`0x02`) that GDOS 2.4's resident driver probes at boot, and GDOS 2.4 reaches its built-in hard disk end-to-end: `PD 5`/`PD 6` return drive data, `HDFORMAT` completes both passes, GDOS partitions the unit into logical drives 5 and 6, and files written to them persist inside the `.hdv`. The floppy-only baseline below remains a useful sanity check against the standard boot ROM.
+### Two different pieces of software, two different controllers
 
-**Correction, 2026-08-01: "OMTI-only testing failed" does not generalize to the Sopp EPROM's own boot-time code, which is a separate piece of software from GDOS 2.4's resident driver.** The sibling project [`CalvaDos`](https://github.com/Egbert-Azure/CalvaDos) — a G-DOS 2.4 hard-disk-boot re-implementation continuing this investigation — has since run the Sopp EPROM's own hard-disk boot path against **OMTI**, extensively and successfully: a working OMTI transport, a working boot sector at `4200h`, and `run-hdboottest.sh` reaching PASS (3286+ OMTI operations, zero floppy reads, zero `RECORD NOT FOUND`). This is not in tension with the Xebec finding above — it's a different piece of software. Stock G-DOS 2.4's own *resident* driver (the code that services drives 5/6/9 once the OS is already running) genuinely drives Xebec S1410, confirmed independently by both projects. The Sopp EPROM's *own boot-time* code (the detect-and-load-a-boot-sector logic that runs before GDOS is loaded at all) genuinely drives OMTI — confirmed by this repo's own port table in `src/g3s_hd-omti_bootrom_2764.annotated.md` ("ports `40h`-`43h` match `sdltrs-MultiHDC`'s documented OMTI 5527 register range exactly") and now by CalvaDos's working end-to-end boot. See `CalvaDos/docs/development/boot-patch-inventory.md` and `CalvaDos/docs/reverse-engineering/calvados-investigation.md` for the trace.
+This distinction caused a long detour and is worth stating plainly up front:
 
-`sdl2trs` loads `~/.sdltrs.t8c` (a global, cross-project settings file, not part of any repo) before applying CLI args, and an *omitted* flag does not clear a value already saved there — always pass every `-diskN`/`-hardN`/`-omtiN` slot explicitly (empty string `""` to clear) rather than relying on defaults, or you'll boot whatever was last left attached (e.g. running `sdl2trs --help`, which isn't a real flag, launches with zero overrides at all).
+- **Stock G-DOS 2.4's resident driver** — the code servicing drives 5 and 6 once the OS is running — drives the **Xebec S1410** SASI controller, including the Genie IIIs onboard SASI adapter at ports `00h`–`02h`. Confirmed independently by this repo and by Klaus Kämpf's CP/M port targeting the same controller.
+- **The Sopp EPROM's boot-time code** — the detect-and-load logic that runs before G-DOS exists in memory — drives **OMTI**. Confirmed from this repo's own disassembly: ports `40h`–`43h` match `sdltrs-MultiHDC`'s documented OMTI 5527 register range exactly.
 
-**Confirmed working baseline (floppy, no hard disk):**
+These are not in tension. They are separate programs written two years apart against different hardware. Earlier notes here stated "OMTI testing failed" without that qualifier, which was true of the resident driver and false of the EPROM.
 
-Run the emulator from its own checkout, but point the ROM/disk paths at **this** repo. Replace `GDOS-REPO` with the path to this repository. Every drive slot is passed explicitly (empty `""` clears it) — see the note above about `~/.sdltrs.t8c`.
+With Xebec emulation in place, stock G-DOS 2.4 reaches its built-in hard disk end-to-end: `PD 5`/`PD 6` return drive data, `HDFORMAT` completes both passes, G-DOS addresses the unit as logical drives 5 and 6, and files written there persist inside the `.hdv`.
+
+### Settings-file trap
+
+`sdl2trs` loads `~/.sdltrs.t8c` — a global, cross-project settings file belonging to no repository — before applying command-line arguments. An *omitted* flag does not clear a value already stored there. Always pass every `-diskN`/`-hardN`/`-omtiN` slot explicitly, using an empty string to clear, or you will boot whatever was last attached. Note that `sdl2trs --help` is not a real flag and launches the emulator with no overrides at all.
+
+### Confirmed floppy baseline
+
+Run the emulator from its own checkout, pointing ROM and disk paths at this repo. Replace `GDOS-REPO` with the path to this repository.
 
 ```sh
 # from the sdltrs-MultiHDC emulator checkout:
@@ -50,30 +66,35 @@ Run the emulator from its own checkout, but point the ROM/disk paths at **this**
   -nofullscreen
 ```
 
-Boots straight to a working **GDOS 2.4 prompt** with the standard boot banner; `DIR` and other commands work normally. This is the floppy-only baseline to compare against once the Sopp EPROM (`ROM/g3s_hd-omti_bootrom_2764.bin`) + an OMTI hard disk are attached instead of/alongside the floppy.
+This boots to a working G-DOS 2.4 prompt with the standard banner; `DIR` and other commands behave normally. It is the reference point to compare against when the Sopp EPROM and an OMTI disk are attached instead.
 
-`-diskdebug <hexval>` (bit 0 `FDCREG`, bit 1 `FDCCMD`, bit 6 `DMK`, etc. — see `src/trs_disk.c` in `sdltrs-MultiHDC`) traces floppy-controller I/O to stdout/stderr, useful for confirming activity/progress without needing to read the emulated screen directly.
+`-diskdebug <hexval>` traces floppy-controller I/O to stdout/stderr (bit 0 `FDCREG`, bit 1 `FDCCMD`, bit 6 `DMK` — see `src/trs_disk.c` in `sdltrs-MultiHDC`). Useful for confirming activity without reading the emulated screen.
 
 ## Research notes
 
-### GDOS 2.4 origin
+### G-DOS 2.4 origin
 
-- `SYS0.SYS` carries `VERSION 2.4  (C) 1984 TCS/MVC`. GDOS 2.4 is a 1984 product of TCS (Trommeschläger Computersysteme, Sankt Augustin); **MVC = Marcus von Cube**, who wrote GDOS 2.4 together with **Klaus Kämpf**.
-- It was built from one shared codebase into three model-specific system disks (Genie III / IIs / IIIs) via installer job scripts (`GDOSIII.JOB` / `GDOSIIS.JOB` / `GDOSIIIS.JOB`); the disks here span roughly 1984–1985. Architecture: `GDOS.SYS` is a small boot stub, `SYS0.SYS` the resident DOS core, `SYS1–SYS29.SYS` (+ `OVL2–OVL5.SYS` on the IIIs) individually-loaded overlays. `SYS0.SYS` differs between disk instances — both "VERSION 2.4" but different patch levels.
+`SYS0.SYS` carries `VERSION 2.4  (C) 1984 TCS/MVC`. G-DOS 2.4 is a 1984 product of TCS (Trommeschläger Computersysteme, Sankt Augustin). **MVC is Marcus von Cube**, who wrote G-DOS 2.4 together with **Klaus Kämpf**.
+
+It was built from one shared codebase into three model-specific system disks (Genie III / IIs / IIIs) via installer job scripts — `GDOSIII.JOB`, `GDOSIIS.JOB`, `GDOSIIIS.JOB`. The disks here span roughly 1984–1985.
+
+Architecture: `GDOS.SYS` is a small boot stub, `SYS0.SYS` the resident DOS core, `SYS1`–`SYS29.SYS` plus `OVL2`–`OVL5.SYS` on the IIIs are individually loaded overlays. `SYS0.SYS` differs between disk instances — all "VERSION 2.4", but at different patch levels.
 
 ### Hard-disk support (Genie IIIs only)
 
-Hard-disk tooling ships only in the Genie IIIs ("GDOSIIIS") build. Per the manual, a built-in **10 MB hard disk** is addressed as **drives 5 and 6** (unit 1 / unit 2) — native SASI support, not a later bolt-on, shipping in the 1985 build a year before Sopp's 1986 OMTI boot-EPROM mod. `HDFORMAT.CMD` erases and two-pass formats the disk (talking to the controller directly); `GENDIR.CMD` rebuilds its boot directory but needs a valid drive-table entry (pointer at `4399h`) for the drive number.
+Hard-disk tooling ships only in the Genie IIIs build. Per the G-DOS 2.4 manual (*HD-Unterstützung, nur GENIE IIIs*), a built-in **10 MB hard disk** is addressed as **drives 5 and 6** — one physical disk, two volumes. This is native SASI support present in the 1985 build, a year before Sopp's OMTI boot-EPROM modification, not a later bolt-on.
 
-~~**Correction, 2026-08-01: the driver code itself supports a third hard-disk slot, drive 9, not documented in the manual excerpt above.** `CalvaDos`'s own extraction of the *stock* Xebec driver blob (not authored by that project — pulled directly from a stock `SYS0/SYS`) decodes its parameter table as `10h,11h,12h,13h,00h,40h,41h,00h,7Fh,42h`: drive `5`→hard disk volume 0, `6`→volume 1, **`9`→volume 2**, all three dispatching to the same handler. See `CalvaDos/src/hd-driver/abi.md`, "a machine with two floppies and three hard-disk volumes at DOS drive numbers 5, 6 and 9." This does not contradict the manual's "drives 5 and 6" — that most plausibly describes what the specific 10 MB product used, one or two of three available slots — but it means "fixed 10MB, two partitions" understates what the driver code itself can address.~~ **What populates the `4399h` drive-table entry is also settled, 2026-08-01** — see "Open questions," below.
+`HDFORMAT.CMD` erases and two-pass formats the disk, talking to the controller directly. `GENDIR.CMD` rebuilds the boot directory but requires a valid drive-table entry (pointer at `4399h`) for the drive number.
 
-**Reverted, 2026-08-07: the 2026-08-01 drive-9 correction above is withdrawn.** It let a structural inference about a dispatch table override a period document, which was the wrong call. The G-DOS 2.4 manual (*HD-Unterstützung, nur GENIE IIIs*) documents one built-in 10 MB hard disk addressed as **drives 5 and 6** — one physical disk, two volumes, and that is the shipped machine. The stock Xebec driver's dispatch table does decode three slots reached by function codes 5, 6 and 9, and that decode is correct — but three dispatch slots is not the same claim as three volumes in the shipped product, and it cannot outrank the manual on what the machine shipped as. The original wording — "drives 5 and 6", "fixed 10 MB, two partitions" — stands as written.
+The controller is the **Xebec S1410 (SASI)**. G-DOS 2.4 exposes no user-configurable hard-disk parameters — the geometry is fixed. The `PD`/PDRIVE command is **floppy-only**; this is confirmed from the physical manual, which shows it configuring floppy drive types, densities and step timing and nothing else.
 
-The controller is the **Xebec S1410 (SASI)** — not WD1000/1010 or OMTI 5527 — targeted by both GDOS 2.4 and **Klaus Kämpf's** CP/M port. GDOS 2.4 has no user-configurable HD parameters (fixed 10 MB, two partitions). The **`PD`/PDRIVE** command is **floppy-only** (confirmed from the physical manual — it configures only floppy drive types, densities, and step timing); whatever populates a hard-disk drive-table entry is a separate, still-unidentified mechanism.
+What populates the `4399h` drive-table entry is `DRVSEL` itself, as routine bookkeeping on every drive select for any drive — along with the 8-byte PDRIVE copy at `430Ah`–`4311h`. Not `PD`/PDRIVE, and not `GENDIR.CMD`, which relies on the command interpreter having already selected the drive before it runs. Two independent readings converge on this: `GENDIR/CMD` itself, and a full disassembly of stock `DRVSEL`'s write set at `4773h`–`47E2h`. Confidence: high — both readings are of stock code, not of reconstructed code.
+
+**A note on the dispatch table.** The stock Xebec driver's parameter table decodes as `10h,11h,12h,13h,00h,40h,41h,00h,7Fh,42h`, giving dispatch slots reached by function codes 5, 6 and 9. That decode is correct. It is *not* a statement about how many volumes the machine shipped with — three dispatch slots and three configured volumes are different claims, and the manual settles the second one at two. Do not carry a "5/6/9" formulation into any description of the stock hard-disk layout.
 
 ### The Sopp EPROM — `ROM/g3s_hd-omti_bootrom_2764.bin`
 
-This is the headline finding: **the boot ROM itself names Arnulf Sopp as the author of the hard-disk boot modification.** `strings` on it shows:
+The boot ROM names its own author. `strings` shows:
 
 ```text
 (R)  1984 TCS #8601003
@@ -84,7 +105,7 @@ Uwe Böker   1984
 Arnulf Sopp 1986
 ```
 
-versus the plain `ROM/g3s_8501004_bootrom_2732.bin`, which shows only:
+The plain `ROM/g3s_8501004_bootrom_2732.bin` shows only:
 
 ```text
 (R) 1984   TCS
@@ -92,24 +113,64 @@ versus the plain `ROM/g3s_8501004_bootrom_2732.bin`, which shows only:
 Reg.Nr.: 8501004
 ```
 
-The plain ROM is 4 KB (2732); the Sopp ROM is 8 KB (2764), reorganized throughout (not a simple append), with the English boot messages translated to German plus an apparent added clock routine. It stays backward-compatible for floppy boot.
+The plain ROM is 4 KB (2732); the Sopp ROM is 8 KB (2764), reorganized throughout rather than simply appended to, with the English boot messages translated to German and an apparent added clock routine. It remains backward-compatible for floppy boot.
 
-Disassembly (`src/g3s_hd-omti_bootrom_2764.annotated.md`) shows a **detect-and-fallback HD bootstrap**: a keyboard hotkey gates whether HD boot is attempted, a device selector (register `E` → `IX`) picks the target, and on success the ROM streams a boot sector from the OMTI controller (ports `40h`–`43h`) into RAM at `4200h` and jumps there. The ROM contains **no GDOS/Calva-DOS code** — ~~it hands off to a hard-disk boot sector that hasn't been obtained yet~~.
+The disassembly (`src/g3s_hd-omti_bootrom_2764.annotated.md`) shows a detect-and-fallback hard-disk bootstrap:
 
-**Correction, 2026-08-01 — two separate claims here, and they now need separating.** The *original* CalvaDOS boot-sector artifact remains unobtained — unchanged. But the *hand-off contract* — what address, how much data, what the ROM expects to find there — is now known by direct observation, not from the missing artifact: the sibling project `CalvaDos` wrote its own boot sector for `4200h` (`src/hd-driver/omti/bootsec.asm`), watched this same Sopp EPROM load and execute it, and has since driven the boot all the way through `SYS0/SYS` and G-DOS module loading to a passing end-to-end harness (`run-hdboottest.sh`, PASS as of 2026-08-01). See `CalvaDos/docs/reverse-engineering/calvados-investigation.md`, "The boot chain, and why a hard-disk boot sector needs no loader of its own," and "It boots. G-DOS 2.4 runs from the OMTI hard disk, with a command prompt."
+1. Hotkey bits gate whether HD boot is attempted at all (`1100h`).
+2. Poll port `42h` for `FAh` — card present.
+3. Bus reset (`XOR A` / `OUT 41h` / `OUT 43h`), issued before the first command, never as a bare release.
+4. TEST UNIT READY probe, up to 32 retries.
+5. SET DRIVE CHARACTERISTICS — payload decodes to 612 cylinders, 2 heads, precomp cylinder 300. At 17 sectors per track that is 20,808 sectors, consistent with the manual's 10 MB drive.
+6. Boot-sector READ, one block at cylinder/head/sector 0/0/0, streamed into `4200h` as 2 × 256 bytes.
+7. `E=1`, `IX=4200h`, jump back into the relocated device-dispatch body, which hands control to `4200h`.
 
-An OMTI-emulation crash hit while chasing this end-to-end is written up in `src/omti_boot_crash_investigation.md`. Its root cause as stated there — "the controller is really Xebec, not OMTI" — needs the same scoping correction made throughout this file: see the correction added directly in that file, and in "Emulation," above. The Xebec work itself was and remains the right fix for GDOS 2.4's own resident driver; it was the general phrasing of the root cause, not the Xebec work, that needed qualifying.
+The device selector in register `E` picks the target: `E=1` → `IX=4200h` (hard disk), `E=2` → `IX=FC00h` (CP/M floppy), `E=3` → `IX=0000h` (service disk).
+
+The ROM contains no G-DOS or CalvaDOS code of its own. It loads a boot sector and jumps to it.
+
+**The original boot sector has not been recovered.** What the ROM *expects* to find at `4200h` — the address, the 512-byte size, the entry conditions — is known by direct observation of the ROM, independent of the missing artifact.
+
+An OMTI-emulation crash encountered while chasing this is written up in `src/omti_boot_crash_investigation.md`. Its stated root cause — "the controller is really Xebec, not OMTI" — needs the scoping correction described under "Emulation" above: true of the resident driver, not of the EPROM. The Xebec work was and remains correct; it was the generality of the phrasing that was wrong.
 
 ### External resources
 
-- **[GenieIIIs](https://github.com/Egbert-Azure/GenieIIIs)** (now archived) — the original master archive this repo's GDOS 2.4 disks and both boot ROMs were pulled from. Its material has been reorganized into this repo and the general [TCS-Trommeschlaeger-Genie-IIIs](https://github.com/Egbert-Azure/TCS-Trommeschlaeger-Genie-IIIs) archive.
-- **[trsextract](https://github.com/Egbert-Azure/trsextract)** (`trsextract.py`) — the extraction tool for the `.dmk` disks in this repo.
-- **[sdltrs-MultiHDC](https://github.com/Egbert-Azure/sdltrs-MultiHDC)** — the emulator used for booting/testing, with OMTI 5527, WD1000/1010, and Xebec S1410 emulation. Its Xebec support is what makes GDOS 2.4's drives 5/6 reachable end-to-end (`HDFORMAT.CMD`, `GENDIR.CMD`).
-- **[CalvaDos](https://github.com/Egbert-Azure/CalvaDos)** — a sibling project continuing this investigation from where it leaves off: a re-implementation of Arnulf Sopp's OMTI hard-disk boot support for G-DOS 2.4, since this repo's own artifact was never recovered. Owns the facts this repo now links to rather than restates: the working OMTI driver and transport, the boot sector at `4200h`, the drive model (`5`/`6`/`9`), and the `run-hdboottest.sh` PASS result cited in several corrections above, added 2026-08-01.
+- **[GenieIIIs](https://github.com/Egbert-Azure/GenieIIIs)** (archived) — the original master archive these disks and both boot ROMs came from.
+- **[trsextract](https://github.com/Egbert-Azure/trsextract)** — extraction tool for the `.dmk` disks here.
+- **[sdltrs-MultiHDC](https://github.com/Egbert-Azure/sdltrs-MultiHDC)** — the emulator used for booting and testing, with OMTI 5527, WD1000/1010 and Xebec S1410 support. Its Xebec support is what makes stock G-DOS 2.4's drives 5 and 6 reachable end-to-end.
+- **[CalvaDOS](https://github.com/Egbert-Azure/CalvaDOS)** — sibling project reconstructing Sopp's OMTI hard-disk boot support. **Its documents describe a reconstruction, not the original.** They are a valid source for what that reconstruction does and does not do; they are not evidence about stock G-DOS 2.4 or about Sopp's own code, and should not be cited here as such.
 
 ## Open questions
 
-- ~~Re-run the Sopp EPROM's own *boot-from-hard-disk* path against the now-Xebec-capable `sdltrs-MultiHDC` (the emulator-side blocker for drives 5/6 is resolved — see "Emulation").~~ **Resolved, 2026-08-01, by the sibling project `CalvaDos`, and not against Xebec — against OMTI.** The premise that this path needed Xebec emulation was itself incomplete: the Sopp EPROM's own boot-time code drives OMTI (confirmed independently by this repo's own port table in `src/g3s_hd-omti_bootrom_2764.annotated.md` and by CalvaDos's working driver). Run extensively, end to end: working OMTI transport, a working boot sector at `4200h`, `SYS0/SYS` and G-DOS module loading, `run-hdboottest.sh` reaching PASS (3286+ OMTI operations, zero floppy reads, zero `RECORD NOT FOUND`). Not independently confirmed to reach the interactive command prompt (`Befehlseingabe`) as of that PASS — see `CalvaDos/README.md`'s own status section for the precise claim. See `CalvaDos/docs/development/boot-patch-inventory.md` and `CalvaDos/docs/reverse-engineering/calvados-investigation.md` for the full trace.
-- **Split into two questions, 2026-08-01.** Does the *original* boot sector at `4200h` contain GDOS 2.4, or a distinct "Calva-DOS"? Still open — no such artifact has been obtained. Separately: what does the EPROM expect to find there, structurally? **Answered by observation, not by recovering the original artifact** — `CalvaDos` wrote a working boot sector for this address and watched this ROM load and execute it successfully; see the correction in "The Sopp EPROM," above.
-- ~~What populates GDOS's hard-disk drive-table entry (needed for `GENDIR.CMD` on drives 5/6)? Confirmed **not** `PD`/PDRIVE — still unidentified.~~ **Resolved, 2026-08-01, by `CalvaDos`.** `DRVSEL` itself populates `4399h` (and the 8-byte PDRIVE copy at `430Ah`-`4311h`) as routine bookkeeping on *every* drive select, any drive — not `PD`/`PDRIVE` (correctly ruled out here), and not `GENDIR.CMD` itself, which relies on the command interpreter having already selected the drive before it runs. Two independent findings converge on this: `CalvaDos/docs/reverse-engineering/calvados-investigation.md`, "What GENDIR and HDFORMAT actually are" (2026-07-26, from reading `GENDIR/CMD` itself) and "`dsave` (`4306h`) frozen..." (2026-08-01, a full disassembly of stock `DRVSEL`'s write set, `4773h`-`47E2h`).
-- Which physical key skips HD boot (`F1`/`F2` are the candidates), and does a third boot-ROM variant (Xebec/WD1000-initializing) exist? **Untouched by this correction pass** — no work in the sibling repository bears on this.
+- **Does a reconstructed OMTI boot complete?** Not as of August 2026. A boot sector has been written for `4200h`, and the Sopp EPROM loads and executes it — that part is observed directly and is solid. Beyond that, module loading does not complete. Tracked in CalvaDOS.
+- **Does the original `4200h` boot sector contain G-DOS 2.4, or a distinct "Calva-DOS"?** Open. No such artifact has been obtained, and nothing short of recovering one will settle it.
+- **Which physical key skips HD boot?** `F1` and `F2` are the candidates; the disassembly notes `F1` may enter the Monitor and `F2` is the likelier force-floppy key. Unresolved.
+- **Does a third boot-ROM variant exist** — one that initializes Xebec or WD1000? Unknown; no dump has surfaced.
+
+## Corrections
+
+A dated record of claims that were made here and later withdrawn. Kept because knowing what was believed, and why it was wrong, is part of the evidence.
+
+### Drive count — claimed 2026-08-01, withdrawn 2026-08-07
+
+The stock Xebec driver's parameter table was decoded, correctly, as exposing dispatch slots reached by function codes 5, 6 and 9. That decode was then restated as a claim about the product: that the machine addressed three hard-disk volumes rather than two.
+
+Withdrawn. A structural inference about a dispatch table was allowed to override a period document, which was the wrong call. Three dispatch slots is not the same claim as three configured volumes, and the manual settles the second at two. The decode itself stands and is recorded under "Hard-disk support".
+
+The claim had propagated before it was caught: written into one document, cited by later documents as though it were independent evidence, and eventually used to overwrite a correct manual-sourced statement in a sibling repository. It is the type case for what document-to-document citation does to an unverified claim.
+
+### Harness PASS as evidence of a working boot — claimed 2026-08-01, withdrawn 2026-08-08
+
+Five passages here stated that the Sopp EPROM's hard-disk boot path had been run end to end successfully, on the strength of `run-hdboottest.sh` reaching PASS with 3286+ OMTI operations, zero floppy reads and zero `RECORD NOT FOUND`.
+
+The runs happened and the counts are real. The inference does not follow. The PASS criterion is a *minimum OMTI operation count*, which a boot stuck in a loop satisfies as readily as one that completes; high operation counts and absent floppy reads are consistent with a working boot and equally consistent with a failing one, so they distinguish nothing. The hedge that survived into the original text — that the run was not independently confirmed to reach the interactive command prompt — was the tell.
+
+One part is separable and survives, because it rests on direct observation rather than on the harness: the Sopp EPROM does load and execute a boot sector written for `4200h`. Everything downstream of that is unresolved; see "Open questions".
+
+### Drive-table entry — resolved 2026-08-01
+
+Previously recorded as unidentified, with `PD`/PDRIVE correctly ruled out. Answered: `DRVSEL` itself populates the entry as bookkeeping on every drive select. Both supporting readings are of stock code, so this does not depend on the reconstruction. See "Hard-disk support".
+
+### Citation direction — noted 2026-08-08
+
+Several passages cited CalvaDOS documents as evidence for facts about stock G-DOS 2.4 and about the Sopp EPROM. CalvaDOS is a reconstruction; its output cannot serve as evidence about the original it reconstructs. Claims about stock behaviour now cite the manual, the Grosser reference, or this repo's own disassembly. Claims about the reconstruction cite CalvaDOS and are labelled as such.
