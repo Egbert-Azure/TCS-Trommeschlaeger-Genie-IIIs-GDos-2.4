@@ -10,7 +10,7 @@ This is an archive plus reverse-engineering notes. There is no build system and 
 
 Two things are deliberately out of scope, because both have their own homes:
 
-- **Booting from hard disk.** Arnulf Sopp's 1986 boot-EPROM modification is a separate program from G-DOS's own driver, and the original boot sector it loads was never recovered. Reconstructing it belongs to [CalvaDOS](https://github.com/Egbert-Azure/CalvaDOS). The EPROM dump and its disassembly are held here as artifacts.
+- **Booting from hard disk.** Arnulf Sopp's 1986 boot-EPROM modification is a separate program from G-DOS's own driver, and the original boot sector it loads was never recovered. Reconstructing it belongs to [CalvaDOS](https://github.com/Egbert-Azure/TCS-Trommeschlaeger-Genie-IIIs-CalvaDOS). The EPROM dump and its disassembly are held here as artifacts.
 - **CP/M**, including Holte's CP/M 3.0 BIOS and its Z-System boot disk, which live in the general [TCS-Trommeschlaeger-Genie-IIIs](https://github.com/Egbert-Azure/TCS-Trommeschlaeger-Genie-IIIs) archive. Klaus Kämpf's CP/M port is relevant here only as corroboration on the controller.
 
 ## Sibling repositories
@@ -18,7 +18,7 @@ Two things are deliberately out of scope, because both have their own homes:
 | Repository | Scope |
 |---|---|
 | [TCS-Trommeschlaeger-Genie-IIIs](https://github.com/Egbert-Azure/TCS-Trommeschlaeger-Genie-IIIs) | General hardware and historical documentation, and all CP/M material — including Holte's CP/M 3.0 BIOS and its Z-System boot disk |
-| [CalvaDOS](https://github.com/Egbert-Azure/CalvaDOS) | Reconstruction of Sopp's 1986 OMTI hard-disk boot support |
+| [TCS-Trommeschlaeger-Genie-IIIs-CalvaDOS](https://github.com/Egbert-Azure/TCS-Trommeschlaeger-Genie-IIIs-CalvaDOS) | Reconstruction of Sopp's 1986 OMTI hard-disk boot support |
 | [sdltrs-MultiHDC](https://github.com/Egbert-Azure/sdltrs-MultiHDC) | Emulator with OMTI 5527, WD1000/1010 and Xebec S1410 support |
 | [trsextract](https://github.com/Egbert-Azure/trsextract) | Extraction tool for the `.dmk` images here |
 | [GenieIIIs](https://github.com/Egbert-Azure/GenieIIIs) (archived) | Original master archive these disks and ROMs came from |
@@ -47,6 +47,8 @@ Hard-disk tooling ships only in the Genie IIIs build. It is native support prese
 
 Per the G-DOS 2.4 manual (*HD-Unterstützung, nur GENIE IIIs*): one built-in **10 MB hard disk**, addressed as **drives 5 and 6** — one physical disk, two volumes. G-DOS 2.4 exposes no user-configurable hard-disk parameters; the geometry is fixed.
 
+The manual is the authority on this and outranks inference. Internal structures in the driver have previously been read as evidence of a different volume count; they are not. Anything describing the stock layout says drives 5 and 6.
+
 The `PD`/PDRIVE command is floppy-only. Confirmed from the physical manual, which shows it configuring floppy drive types, densities and step timing and nothing else — it is not what configures a hard-disk drive-table entry.
 
 ### The controller
@@ -55,7 +57,7 @@ The `PD`/PDRIVE command is floppy-only. Confirmed from the physical manual, whic
 
 It is a third protocol, distinct from OMTI 5527 and from WD1000/1010, and getting this right is what unblocked the hard-disk path. Note that the Sopp EPROM's boot-time code drives OMTI instead. The two are separate programs written two years apart against different hardware, and a finding about one says nothing about the other.
 
-The resident driver probes an onboard SASI adapter at ports `00h`–`02h` at boot. *Confidence: moderate.* This is documented on the emulator side and the driver works against it, but no period document in evidence states the port range, so it is an inference from working behaviour rather than a sourced fact.
+The resident driver probes an onboard SASI adapter at ports `00h`–`02h` at boot: the drive ID is written to port `00h` and read back, SEL is pulsed on port `02h`, and BUSY (bit 1) and REQ (bit 0) are polled on port `01h`. *Confidence: moderate-to-high* — this comes from disassembly of the stock driver, matched by working emulation, but no period document in evidence states the port range.
 
 ### Geometry
 
@@ -69,25 +71,15 @@ Two traps worth recording:
 ### Tools
 
 - **`HDFORMAT.CMD`** — erases and two-pass formats the disk, talking to the controller directly rather than through the DOS.
-- **`GENDIR.CMD`** — rebuilds the boot directory. Requires a valid drive-table entry for the drive number (pointer at `4399h`). *Confidence: moderate on the `4399h` address specifically* — it does not appear in Grosser's `DRVSEL` listing, so it rests on this project's own reading.
+- **`GENDIR.CMD`** — rebuilds the boot directory. Requires a valid drive-table entry for the drive number, via the pointer at `4399h`. *Confidence: high* — Grosser documents `4399h` directly (page 3-31, `47A3h`: `LD (4399),HL`), as the address of the PDRIVE block belonging to the drive just selected.
 
 ### What populates the drive-table entry
 
 `DRVSEL` itself, as routine bookkeeping on **every** drive select, for any drive. Not `PD`/PDRIVE, and not `GENDIR.CMD`, which relies on the command interpreter having already selected the drive before it runs.
 
-Grosser documents `DRVSEL` directly (*Das DOS-Buch*, chapter 3, `SYS0/SYS`, page 3-30, entry at `4776h`): the selected drive number is recorded as the current drive at `4308h`, its bit pattern goes to `4309h`, and its PDRIVE parameters are transferred to `430Ah`–`4311h`. *Confidence: high* — a period source describing stock code, independently matched by a disassembly of the same routine's write set at `4773h`–`47E2h`.
+Grosser documents `DRVSEL` directly (*Das DOS-Buch*, chapter 3, `SYS0/SYS`, pages 3-30 and 3-31, entry at `4776h`). On every select it records the drive number as the current drive at `4308h`, computes its bit pattern into `4309h`, writes the address of that drive's PDRIVE block to the pointer at `4399h`, and copies the block's first eight bytes to `430Ah`–`4311h`. *Confidence: high* — a period source describing stock code, independently matched by a disassembly of the same routine's write set at `4773h`–`47E2h`.
 
-### A note on the dispatch table
-
-The stock Xebec driver's parameter table decodes as:
-
-```text
-10h,11h,12h,13h,00h,40h,41h,00h,7Fh,42h
-```
-
-which yields dispatch slots reached by function codes 5, 6 and 9. That decode is correct and worth recording.
-
-It is **not** a statement about how many volumes the machine shipped with. Three dispatch slots and three configured volumes are different claims, and the manual settles the second one at two. Do not carry a "5/6/9" formulation into any description of the stock hard-disk layout.
+Note the scale this routine actually works at: Grosser's own header gives its input as a drive number 0–3, and PDRIVE blocks exist in RAM only for drives 0–3 (`4371h`–`4398h`). The PDRIVE *sector* on disk carries sixteen-byte entries for drives 0 through 9, which is generic NEWDOS/80 numbering and says nothing about what any particular machine has attached.
 
 ### Status
 
@@ -143,7 +135,7 @@ Reg.Nr.: 8501004
 
 The plain ROM is 4 KB (2732); the Sopp ROM is 8 KB (2764), reorganized throughout rather than appended to, with the English boot messages translated to German and an apparent added clock routine. It stays backward-compatible for floppy boot. `src/g3s_hd-omti_bootrom_2764.annotated.md` holds the disassembly.
 
-The ROM's own OMTI boot path, the missing boot sector, and the question of which key skips hard-disk boot are all tracked in [CalvaDOS](https://github.com/Egbert-Azure/CalvaDOS), not here.
+The ROM's own OMTI boot path, the missing boot sector, and the question of which key skips hard-disk boot are all tracked in [CalvaDOS](https://github.com/Egbert-Azure/TCS-Trommeschlaeger-Genie-IIIs-CalvaDOS), not here.
 
 ## Open questions
 
@@ -164,7 +156,7 @@ Extract disks with `trsextract`: `python3 trsextract.py <image.dmk> -o <dest_dir
 
 Everything above describes stock, shipped software unless marked otherwise. Where a claim rests on a reconstruction rather than on an original artifact, a period document, or this repo's own disassembly, it says so. What follows is a dated record of claims made here and later withdrawn, kept because knowing what was believed, and why it was wrong, is part of the evidence.
 
-**Drive count — claimed 2026-08-01, withdrawn 2026-08-07.** The dispatch-table decode was restated as a claim about the product: that the machine addressed three hard-disk volumes rather than two. Withdrawn. A structural inference was allowed to override a period document. The decode stands; the product claim built on it does not. The claim also propagated before it was caught — written into one document, cited by later documents as though independently evidenced, and eventually used to overwrite a correct manual-sourced statement in a sibling repository.
+**Drive count — claimed 2026-08-01, withdrawn 2026-08-07.** A structural detail internal to the stock driver was restated as a claim about the product: that the machine addressed more hard-disk volumes than it did. Withdrawn. A structural inference was allowed to override a period document. The decode stands; the product claim built on it does not. The claim also propagated before it was caught — written into one document, cited by later documents as though independently evidenced, and eventually used to overwrite a correct manual-sourced statement in a sibling repository.
 
 **Hard-disk boot claimed working — withdrawn 2026-08-08.** Earlier revisions stated that the Sopp EPROM's hard-disk boot path had been run end to end successfully, on the strength of a test harness reaching PASS with a high OMTI operation count and no floppy reads. The runs happened; the inference does not follow. The PASS criterion is a minimum operation count, which a boot stuck in a loop satisfies as readily as one that completes. Those numbers are equally consistent with success and failure and therefore distinguish nothing. Hard-disk boot status now lives in CalvaDOS, where the work is.
 
